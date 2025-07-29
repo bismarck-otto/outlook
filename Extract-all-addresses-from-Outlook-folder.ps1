@@ -12,6 +12,24 @@ $mailBoxName = ""          # Or your mailbox / group mailbox name
 $folderPath  = "Sent Items"     # Relative to the specified mailbox
 $subfolders  = $false            # Set to $true to include all subfolders
 
+# Define exclusion filter as a newline-separated string
+$filterText = @"
+news
+newsletter
+no-reply
+noreply
+notification
+Office365Reports
+booking
+mailing
+mailer-daemon
+linkedin
+facebook
+"@ # keep this end quote
+
+# Convert to array and trim empty entries
+$filter = $filterText -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
+
 # Launch Outlook COM object
 $outlook = New-Object -ComObject Outlook.Application
 $namespace = $null
@@ -114,6 +132,14 @@ if ($subfolders) {
     }
 }
 
+# Exclude Exchange internal addresses
+$emailAddresses = $emailAddresses | Where-Object { $_ -notlike "/o=ExchangeLabs/*" }
+
+# Apply substring filters (case-insensitive)
+$emailAddresses = $emailAddresses | Where-Object {
+    $addr = $_.ToLower()
+    -not ($filter | Where-Object { $addr -like "*$_*" })
+}
 # Remove duplicates and sort
 $emailAddresses = $emailAddresses | Sort-Object -Unique
 
