@@ -8,8 +8,9 @@
 # =====================================================================================
 
 # Set mailbox name and folder path (use exact names from Outlook)
-$mailBoxName = ""                    # Or your mailbox / group mailbox name
-$folderPath = "Sent Items"           # Relative to the specified mailbox
+$mailBoxName = ""          # Or your mailbox / group mailbox name
+$folderPath  = "Sent Items"     # Relative to the specified mailbox
+$subfolders  = $false            # Set to $true to include all subfolders
 
 # Launch Outlook COM object
 $outlook = New-Object -ComObject Outlook.Application
@@ -69,22 +70,46 @@ function Get-OutlookFolder {
     }
     return $currentFolder
 }
+function Get-EmailsFromFolder {
+    param (
+        $folder,
+        [ref]$emailList
+    )
+
+    # Extract emails from this folder
+    foreach ($item in $folder.Items) {
+        if ($item -and $item.MessageClass -eq "IPM.Note") {
+            $from = $item.SenderEmailAddress
+            if ($from) { $emailList.Value += $from }
+
+            foreach ($recip in $item.Recipients) {
+                $address = $recip.Address
+                if ($address) { $emailList.Value += $address }
+            }
+        }
+    }
+
+    # Recurse into subfolders
+    foreach ($subFolder in $folder.Folders) {
+        Get-EmailsFromFolder -folder $subFolder -emailList $emailList
+    }
+}
 
 $targetFolder = Get-OutlookFolder -root $rootMailbox -path $folderPath
-$items = $targetFolder.Items
-
 $emailAddresses = @()
 
-foreach ($item in $items) {
-    if ($item.MessageClass -eq "IPM.Note") {
-        # From
-        $from = $item.SenderEmailAddress
-        if ($from) { $emailAddresses += $from }
+if ($subfolders) {
+    Get-EmailsFromFolder -folder $targetFolder -emailList ([ref]$emailAddresses)
+} else {
+    foreach ($item in $targetFolder.Items) {
+        if ($item -and $item.MessageClass -eq "IPM.Note") {
+            $from = $item.SenderEmailAddress
+            if ($from) { $emailAddresses += $from }
 
-        # To
-        foreach ($recip in $item.Recipients) {
-            $address = $recip.Address
-            if ($address) { $emailAddresses += $address }
+            foreach ($recip in $item.Recipients) {
+                $address = $recip.Address
+                if ($address) { $emailAddresses += $address }
+            }
         }
     }
 }
