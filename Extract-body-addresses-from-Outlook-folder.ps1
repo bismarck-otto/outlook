@@ -1,10 +1,10 @@
-# ChatGPT for bismarck-otto 2025-08-05 to Extract-all-addresses-from-Outlook-folder.ps1
+# ChatGPT for bismarck-otto 2025-08-05 to Extract-body-addresses-from-Outlook-folder.ps1
 
 # Copyright (c) 2025 Otto von Bismarck
 # This project includes portions generated using OpenAI’s ChatGPT.
 # All code is released under the MIT License.
 
-# Extract Email Addresses from a Specific Outlook Folder
+# Extract Email Addresses from mail bodies in a Specific Outlook Folder
 # =====================================================================================
 
 # Set mailbox name and folder path (use exact names from Outlook)
@@ -20,6 +20,8 @@ no-reply
 noreply
 notification
 Office365Reports
+microsoftexchange
+prod.outlook.com
 booking
 mailing
 mailer-daemon
@@ -105,26 +107,26 @@ function Get-OutlookFolder {
     }
     return $currentFolder
 }
+
+# Recursively extract email addresses from body text
 function Get-EmailsFromFolder {
     param (
         $folder,
         [ref]$emailList
     )
 
-    # Extract emails from this folder
     foreach ($item in $folder.Items) {
-        if ($item -and $item.MessageClass -eq "IPM.Note") {
-            $from = $item.SenderEmailAddress
-            if ($from) { $emailList.Value += $from }
-
-            foreach ($recip in $item.Recipients) {
-                $address = $recip.Address
-                if ($address) { $emailList.Value += $address }
+        if ($item -and ($item.MessageClass -eq "IPM.Note" -or $item.MessageClass -like "IPM.Report*")) {
+            $body = $item.Body
+            if ($body) {
+                $emailMatches = Select-String -InputObject $body -Pattern '(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b' -AllMatches
+                if ($emailMatches) {
+                    $emailList.Value += $emailMatches.Matches.Value
+                }
             }
         }
     }
 
-    # Recurse into subfolders
     foreach ($subFolder in $folder.Folders) {
         Get-EmailsFromFolder -folder $subFolder -emailList $emailList
     }
@@ -137,13 +139,13 @@ if ($subfolders) {
     Get-EmailsFromFolder -folder $targetFolder -emailList ([ref]$emailAddresses)
 } else {
     foreach ($item in $targetFolder.Items) {
-        if ($item -and $item.MessageClass -eq "IPM.Note") {
-            $from = $item.SenderEmailAddress
-            if ($from) { $emailAddresses += $from }
-
-            foreach ($recip in $item.Recipients) {
-                $address = $recip.Address
-                if ($address) { $emailAddresses += $address }
+        if ($item -and ($item.MessageClass -eq "IPM.Note" -or $item.MessageClass -like "IPM.Report*")) {
+            $body = $item.Body
+            if ($body) {
+                $emailMatches = Select-String -InputObject $body -Pattern '(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b' -AllMatches
+                if ($emailMatches) {
+                    $emailAddresses += $emailMatches.Matches.Value
+                }
             }
         }
     }
@@ -160,11 +162,12 @@ $emailAddresses = $emailAddresses | Where-Object {
     $addr = $_.ToLower()
     -not ($filter | Where-Object { $addr -like "*$_*" })
 }
+
 # Remove duplicates and sort
 $emailAddresses = $emailAddresses | Sort-Object -Unique
 
-# Output
+# Output to file
 $safeFileName = Get-SafeFileNameFromFolderPath $folderPath
-$outputFile = "EmailAddresses-$safeFileName-$($emailAddresses.Count).txt"
+$outputFile = "EmailAddresses-$safeFileName-body-$($emailAddresses.Count).txt"
 $emailAddresses | Out-File -FilePath $outputFile -Encoding UTF8
 Write-Host "✅ Extracted $($emailAddresses.Count) unique email addresses to $outputFile"
